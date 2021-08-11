@@ -6,7 +6,7 @@
 %%% @end
 %%% Created : 11. Aug 2021 10:07
 %%%-------------------------------------------------------------------
--module(game).
+-module(numbers).
 -author("Cameron Gallichan").
 
 -import(string, [to_lower/1]).
