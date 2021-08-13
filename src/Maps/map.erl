@@ -10,11 +10,20 @@
 -author("Cameron Gallichan").
 
 %% API
--export([create/2]).
+-export([start/2]).
 
-create(FirstName, LastName) ->
+start(FirstName, LastName) ->
 	Map = #{
 		first_name => FirstName,
 		last_name => LastName
 	},
-	io:format("~p", [Map]).
+	io:format("~p~n", [Map]),
+
+	io:format("~p~n", [maps:keys(Map)]),
+	io:format("~p~n", [maps:values(Map)]),
+
+	io:format("~p~n", [maps:find(first_name, Map)]),             % Check if key exists
+	io:format("~p~n", [maps:get(first_name, Map)]),              % Retrieve value
+
+	io:format("~p~n", [maps:put(email, "name@mail.com", Map)]),
+	io:format("~p~n", [maps:remove(first_name, Map)]).
