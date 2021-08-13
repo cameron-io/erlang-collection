@@ -13,7 +13,7 @@
 -export([create/0]).
 
 create() ->
-	{ok, FullName = {FirstName, LastName} } = io:read("What is your name? "),
+	{ok, {FirstName, LastName} = FullName } = io:read("What is your name? "),
 	FirstName,
 	LastName,
 	FullName.
