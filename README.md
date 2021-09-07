@@ -1,3 +1,3 @@
-# Welcome to Erlang-Uni
+# Welcome to Erlang
 
-- Here to bring the func back :wave:
+- A refreshing dive into functional programming :wave:
