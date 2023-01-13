@@ -14,14 +14,10 @@
 
 -type resource()::any().
 
--spec start(_, [resource()]) -> ok | {error, Reason::any()}.
--spec reserve() -> {ok, resource()} | {error, none_available}.
--spec unreserve(resource()) -> ok | {error, Reason::any()}.
-
 -record(
 	state,
-	{																							% Example
-		free :: [resource()],												%		free = [1,2,3]
+	{													% Example
+		free :: [resource()],							%		free = [1,2,3]
 		reserved = [] :: [{resource(), pid()}],			%		reserved = [{1, <0.89.0>}, {3, <0.96.0>}, {...}]
 		monitors = [] :: [{resource(), monitor}]		% 	monitors = [{1, #Ref<0.xxx.xxx.xx>, {...}]
 	}
@@ -29,6 +25,7 @@
 
 %% Entry Point
 
+-spec start(_, [resource()]) -> ok | {error, Reason::any()}.
 start(_StartType, Resources) when erlang:is_list(Resources) ->
 	Pid = erlang:spawn(fun() -> worker(Resources) end),
 	erlang:register(?MODULE, Pid),
@@ -61,8 +58,11 @@ loop(State) ->
 
 %% Process Messaging
 
+-spec reserve() -> {ok, resource()} | {error, none_available}.
 reserve() ->
 	send(reserve).
+
+-spec unreserve(resource()) -> ok | {error, Reason::any()}.
 unreserve(Resource) ->
 	send({unreserve, Resource}).
 
@@ -92,12 +92,12 @@ unreserve(#state{free = Free, reserved = ReservedItemsList, monitors = MonitorsL
 	case lists:keytake(Resource, 1, ReservedItemsList) of
 		{value, ReservedItem, NewReservedItemsTuple} ->
 			{
-				State#state{
+				ok,
+      		 	State#state{
 					free = [Resource | Free],
 					reserved = NewReservedItemsTuple,
 					monitors = end_monitor(Resource, MonitorsList)
-				},
-				ok
+				}
 			};
 		{value, _, _} ->
 			{State, {error, not_your_resource}};
@@ -111,12 +111,12 @@ refresh_state(#state{free = FreeItemsList, reserved = ReservedItemsList, monitor
 	case lists:keytake(Ref, 2, MonitorsList) of
 		{value, {Resource, _Ref}, NewMonitors} ->
 			{
+        		ok,
 				State#state{
 					free = [Resource|FreeItemsList],
 					reserved = lists:keydelete(Resource, 1, ReservedItemsList),
 					monitors = NewMonitors
-				},
-				ok
+				}
 			};
 		false ->
 			{State, {error, unable_to_modify_state}}
