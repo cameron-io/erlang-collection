@@ -27,7 +27,7 @@
     ok | {error, Reason::any()}.
 start(_StartType, StartArgs) when erlang:is_list(StartArgs) ->
     Resources = proplists:get_value(resources, StartArgs),
-    Pid = erlang:spawn(fun() -> init_actor(Resources) end),
+    Pid = erlang:spawn(fun() -> init_supervisor_actor(Resources) end),
     erlang:register(?MODULE, Pid),
     {ok, Pid}.
 
@@ -37,57 +37,79 @@ stop(_State) ->
 -spec reserve() ->
     {ok, resource()} | {error, none_available}.
 reserve() ->
-    send(reserve).
+    send(?MODULE, reserve).
 
 -spec unreserve(resource()) ->
     ok | {error, Reason::any()}.
 unreserve(Resource) ->
-    send({unreserve, Resource}).
+    send(?MODULE, {unreserve, Resource}).
 
 
-%% Mail Box
+%% Post Office
 
-send(Message) ->
-    ?MODULE ! {erlang:self(), Message},
+send(PName, Message) ->
+    PName ! {self(), Message},
     receive
         Reply ->
             Reply
     end.
 
 
-%% Actor Process Loop
+%% Worker Actor Process Loop
 
-init_actor(Resources) ->
+init_worker_actor(R) ->
+    InitState = #{numbers => []},
+    Pid = erlang:spawn(fun() -> worker_actor(InitState) end),
+    erlang:register(get_worker_name(R), Pid),
+    {ok, Pid}.
+
+worker_actor(#{numbers := NumbersList} = State) ->
+    receive
+        {Pid, NewNum} when is_integer(NewNum) ->
+            NewNumbersList = [NewNum|NumbersList],
+            NewState = State#{numbers => NewNumbersList},
+            Pid ! {ok, NewNumbersList}, 
+            worker_actor(NewState);
+        {Pid, exit} ->
+            Pid ! ok
+    end.
+
+get_worker_name(R) ->
+    binary_to_atom(<<"worker_", (integer_to_binary(R))/binary>>).
+
+%% Supervisor Actor Process Loop
+
+init_supervisor_actor(Resources) ->
     InitState = #{
         free => Resources,
         reserved => [],
         monitors => []
     },
-    actor_loop(InitState).
+    supervisor_actor(InitState).
 
-actor_loop(State) ->
+supervisor_actor(State) ->
 	receive
-		{Pid, reserve} ->
-			{NewState, Reply} = reserve(State, Pid),
-			Pid ! Reply,
-			actor_loop(NewState);
-		{Pid, {unreserve, Resource}} ->
-			{NewState, Reply} = unreserve(State, {Resource, Pid}),
-			Pid ! Reply,
-			actor_loop(NewState);
+		{CallerPid, reserve} ->
+			{NewState, Reply} = reserve(State),
+			CallerPid ! Reply,
+			supervisor_actor(NewState);
+		{CallerPid, {unreserve, Resource}} ->
+			{NewState, Reply} = unreserve(State, Resource),
+			CallerPid ! Reply,
+			supervisor_actor(NewState);
 		{'DOWN', DownedMonitorRef, process, Pid, _Reason} ->
 			{NewState, Reply} = rollback_state(State, DownedMonitorRef),
 			Pid ! Reply,
-			actor_loop(NewState)
+			supervisor_actor(NewState)
 	end.
 
 
 %% Message Handlers
 
--spec reserve(state(), pid()) ->
+-spec reserve(state()) ->
     {state(), reply}.
 
-reserve(#{free := []} = State, _) ->
+reserve(#{free := []} = State) ->
     {State, none_available};
 
 reserve(
@@ -95,11 +117,11 @@ reserve(
         free := [R|Rs],
         reserved := ReservedItemsList,
         monitors := MonitorsList
-    } = State,
-    Pid
+    } = State
 ) ->
+    {ok, Pid} = init_worker_actor(R),
     MonitorRef = erlang:monitor(process, Pid),
-    Reply = {ok, R},
+    Reply = {ok, {R, Pid}},
     {State#{
         free => Rs,
         reserved => [{R, Pid} | ReservedItemsList],
@@ -115,17 +137,17 @@ unreserve(
         reserved := ReservedItemsList,
         monitors := MonitorsList
     } = State,
-    {Resource, _Pid} = ReservedItem
+    Resource
 ) ->
 	case lists:keytake(Resource, 1, ReservedItemsList) of
-		{value, ReservedItem, NewReservedItemsTuple} ->
+		{value, {Resource, _Pid}, NewReservedItemsList} ->
+            NewMonitorsList = demonitor_resource(Resource, MonitorsList),
+            ok = send(get_worker_name(Resource), exit),
 			{State#{
                 free => [Resource|FreeItemsList],
-                reserved => NewReservedItemsTuple,
-                monitors => demonitor_resource(Resource, MonitorsList)
+                reserved => NewReservedItemsList,
+                monitors => NewMonitorsList
             }, _Reply = ok};
-        {value, _, _} ->
-            {State, {error, resource_from_different_pid}};
         false ->
             {State, {error, resource_not_reserved}}
     end.
