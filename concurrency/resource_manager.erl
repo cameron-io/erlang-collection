@@ -3,7 +3,7 @@
 %%% @author Cameron G.
 %%% @copyright (C) 2023
 %%%-------------------------------------------------------------------
--module(resource_manager_v2).
+-module(resource_manager).
 -author("Cameron Gallichan").
 
 -behavior(application).
@@ -15,7 +15,7 @@
 
 -type state() :: #{
     free => [resource()],
-    reserved => [{pid(), resource()}],
+    reserved => [{resource(), pid()}],
     monitors => [{resource(), pid()}]
 }.
 
@@ -45,8 +45,12 @@ unreserve(Resource) ->
 %% Worker Process Loop
 
 worker(Resources) ->
-    State = #{free => Resources, reserved => [], monitors => []},
-    actor_loop(State).
+    InitState = #{
+        free => Resources,
+        reserved => [],
+        monitors => []
+    },
+    actor_loop(InitState).
 
 actor_loop(State) ->
 	receive
