@@ -122,7 +122,7 @@ unreserve(
                 monitors => demonitor_resource(Resource, MonitorsList)
             }, _Reply = ok};
         {value, _, _} ->
-            {State, {error, not_your_resource}};
+            {State, {error, resource_from_different_pid}};
         false ->
             {State, {error, resource_not_reserved}}
     end.
