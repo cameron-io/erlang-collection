@@ -11,19 +11,22 @@
 %% API
 -export([start/2, stop/1, reserve/0, unreserve/1]).
 
--type resource()::any().
+-type start_type() :: normal | {takeover, node()} | {failover, node()}.
+
+-type resource() :: term().
 
 -type state() :: #{
     free => [resource()],
     reserved => [{resource(), pid()}],
-    monitors => [{resource(), pid()}]
+    monitors => [{resource(), reference()}]
 }.
 
 %% API Functions
 
--spec start(_, [resource()]) ->
+-spec start(start_type(), [{resources, resource()}|_]) ->
     ok | {error, Reason::any()}.
-start(_StartType, Resources) when erlang:is_list(Resources) ->
+start(_StartType, StartArgs) when erlang:is_list(StartArgs) ->
+    Resources = proplists:get_value(resources, StartArgs),
     Pid = erlang:spawn(fun() -> init_actor(Resources) end),
     erlang:register(?MODULE, Pid),
     {ok, Pid}.
@@ -108,7 +111,7 @@ unreserve(#{reserved := []} = State, _) ->
 
 unreserve(
     #{
-        free := Free,
+        free := FreeItemsList,
         reserved := ReservedItemsList,
         monitors := MonitorsList
     } = State,
@@ -117,7 +120,7 @@ unreserve(
 	case lists:keytake(Resource, 1, ReservedItemsList) of
 		{value, ReservedItem, NewReservedItemsTuple} ->
 			{State#{
-                free => [Resource | Free],
+                free => [Resource|FreeItemsList],
                 reserved => NewReservedItemsTuple,
                 monitors => demonitor_resource(Resource, MonitorsList)
             }, _Reply = ok};
