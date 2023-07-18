@@ -72,8 +72,8 @@ actor_loop(State) ->
 			{NewState, Reply} = unreserve(State, {Resource, Pid}),
 			Pid ! Reply,
 			actor_loop(NewState);
-		{'DOWN', Ref, process, Pid, _Reason} ->
-			{NewState, Reply} = refresh_state(State, Ref),
+		{'DOWN', DownedMonitorRef, process, Pid, _Reason} ->
+			{NewState, Reply} = rollback_state(State, DownedMonitorRef),
 			Pid ! Reply,
 			actor_loop(NewState)
 	end.
@@ -127,16 +127,16 @@ unreserve(
             {State, {error, resource_not_reserved}}
     end.
 
-refresh_state(
+rollback_state(
     #{
         free := FreeItemsList,
         reserved := ReservedItemsList,
         monitors := MonitorsList
     } = State,
-    Ref
+    DownedMonitorRef
 ) ->
-    case lists:keytake(Ref, 2, MonitorsList) of
-        {value, {Resource, _Ref}, NewMonitors} ->
+    case lists:keytake(DownedMonitorRef, 2, MonitorsList) of
+        {value, {Resource, DownedMonitorRef}, NewMonitors} ->
             {State#{
                 free => [Resource|FreeItemsList],
                 reserved => lists:keydelete(Resource, 1, ReservedItemsList),
