@@ -24,7 +24,7 @@
 -spec start(_, [resource()]) ->
     ok | {error, Reason::any()}.
 start(_StartType, Resources) when erlang:is_list(Resources) ->
-    Pid = erlang:spawn(fun() -> worker(Resources) end),
+    Pid = erlang:spawn(fun() -> init_actor(Resources) end),
     erlang:register(?MODULE, Pid),
     {ok, Pid}.
 
@@ -42,9 +42,19 @@ unreserve(Resource) ->
     send({unreserve, Resource}).
 
 
-%% Worker Process Loop
+%% Mail Box
 
-worker(Resources) ->
+send(Message) ->
+    ?MODULE ! {erlang:self(), Message},
+    receive
+        Reply ->
+            Reply
+    end.
+
+
+%% Actor Process Loop
+
+init_actor(Resources) ->
     InitState = #{
         free => Resources,
         reserved => [],
@@ -67,16 +77,6 @@ actor_loop(State) ->
 			Pid ! Reply,
 			actor_loop(NewState)
 	end.
-
-
-%% Mail Box
-
-send(Message) ->
-    ?MODULE ! {erlang:self(), Message},
-    receive
-        Reply ->
-            Reply
-    end.
 
 
 %% Message Handlers
