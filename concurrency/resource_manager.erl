@@ -162,6 +162,7 @@ rollback_state(
 ) ->
     case lists:keytake(DownedMonitorRef, 2, MonitorsList) of
         {value, {Resource, DownedMonitorRef}, NewMonitors} ->
+            ok = send(get_worker_name(Resource), exit),
             {State#{
                 free => [Resource|FreeItemsList],
                 reserved => lists:keydelete(Resource, 1, ReservedItemsList),
