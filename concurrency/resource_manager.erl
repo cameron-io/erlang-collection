@@ -9,7 +9,7 @@
 -behavior(application).
 
 %% API
--export([start/2, stop/1, reserve/0, unreserve/1]).
+-export([start_pool/1, start/2, stop/1, reserve/0, unreserve/1]).
 
 -type start_type() :: normal | {takeover, node()} | {failover, node()}.
 
@@ -22,6 +22,9 @@
 }.
 
 %% API Functions
+
+start_pool(N) ->
+    start(normal, [{resources, lists:seq(1, N)}]).
 
 -spec start(start_type(), [{resources, resource()}|_]) ->
     ok | {error, Reason :: term()}.
@@ -40,7 +43,7 @@ reserve() ->
     send(?MODULE, reserve).
 
 -spec unreserve(resource()) ->
-    ok | {error, Reason::any()}.
+    ok | {error, Reason :: term()}.
 unreserve(Resource) ->
     send(?MODULE, {unreserve, Resource}).
 
