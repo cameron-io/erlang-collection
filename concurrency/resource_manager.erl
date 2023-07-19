@@ -31,7 +31,7 @@ start_pool(N) ->
 start(_StartType, StartArgs) when erlang:is_list(StartArgs) ->
     Resources = proplists:get_value(resources, StartArgs),
     Pid = erlang:spawn(fun() -> init_supervisor_actor(Resources) end),
-    erlang:register(?MODULE, Pid),
+    true = erlang:register(?MODULE, Pid),
     {ok, Pid}.
 
 stop(_State) ->
@@ -65,7 +65,7 @@ send(PName, Message) ->
 init_worker_actor(R) ->
     InitState = #{numbers => []},
     Pid = erlang:spawn(fun() -> worker_actor(InitState) end),
-    erlang:register(get_worker_name(R), Pid),
+    true = erlang:register(get_worker_name(R), Pid),
     {ok, Pid}.
 
 worker_actor(#{numbers := NumbersList} = State) ->
