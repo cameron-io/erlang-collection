@@ -18,13 +18,15 @@
 -spec start(start_type(), [{publisher_name, atom()}|_]) ->
     {ok, pid()}.
 start(_StartType, _StartArgs) ->
-    %% Spawn Publisher Actor along with its Subscribed Actors
-    Pid = erlang:spawn(fun() -> init_publisher_actor() end),
-    erlang:register(event_publisher, Pid),
+    %% Spawn Exchange Actor
+    Pid = erlang:spawn(fun() -> init_exchange_actor() end),
+    true = erlang:register(event_publisher, Pid),
+    %% Spawn Subscribers
     {ok, EmailSubPid} = start_subscriber(email),
     {ok, InventorySubPid} = start_subscriber(inventory),
     {ok, ShippingSubPid} = start_subscriber(shipping),
-    %% Start Subscribers
+    %% Publish Purchase Event to Exchange 
+    ok = publish_event(purchase_complete, [{quantity, 1}, {item, "Shirt"}]),
     {ok, [
         {publisher, Pid},
         {email_subscriber, EmailSubPid},
@@ -40,23 +42,37 @@ stop(_State) ->
 start_subscriber(_EventType) ->
     ok.
 
+
 %% Internal Functions
 
-init_publisher_actor() ->
+init_subscriber_actor() ->
+    InitState = #{},
+    subscriber_actor(InitState).
+
+subscriber_actor(State) ->
+    receive
+        {Pid, {EventType, Message}} ->
+            ok
+    end.
+
+
+%% Publisher will have its own exchange with events
+
+init_exchange_actor() ->
     InitState = #{},
     publisher_actor(InitState).
 
-publisher_actor(State) ->
+exchange_actor(State) ->
     receive
         {_Pid, {purchase_complete = EventType, EventMessage}} ->
-            %% Process the event, update state, change behaviour etc.
-            ok = publish_event(EventType, EventMessage),
-            publisher_actor(State);
+            %% Notify the subscribers
+            exchange_actor(State);
+        {_Pid, {add_subscriber, SubscriberType}} ->
+            exchange_actor(State);
         {_Pid, exit} ->
             ok;
         {'DOWN', _Ref, process, _Pid, _Reason} ->
-            %% Remove subscribed actor
-            publisher_actor(State)
+            exchange_actor(State)
     end.
 
 publish_event(_Type, Message) ->
