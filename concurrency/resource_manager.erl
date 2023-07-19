@@ -24,7 +24,7 @@
 %% API Functions
 
 -spec start(start_type(), [{resources, resource()}|_]) ->
-    ok | {error, Reason::any()}.
+    ok | {error, Reason :: term()}.
 start(_StartType, StartArgs) when erlang:is_list(StartArgs) ->
     Resources = proplists:get_value(resources, StartArgs),
     Pid = erlang:spawn(fun() -> init_supervisor_actor(Resources) end),
@@ -52,6 +52,8 @@ send(PName, Message) ->
     receive
         Reply ->
             Reply
+    after 1000 ->
+        io:format("Request Timeout")
     end.
 
 
