@@ -4,6 +4,8 @@
 
 -export([start/2, start_subscriber/1, stop/1]).
 
+-define(EXCHANGE, event_exchange).
+
 -type start_type() :: normal | {takeover, node()} | {failover, node()}.
 
 %% Example Event:
@@ -20,7 +22,7 @@
 start(_StartType, _StartArgs) ->
     %% Spawn Exchange Actor
     Pid = erlang:spawn(fun() -> init_exchange_actor() end),
-    true = erlang:register(event_publisher, Pid),
+    true = erlang:register(?EXCHANGE, Pid),
     %% Spawn Subscribers
     {ok, EmailSubPid} = start_subscriber(email),
     {ok, InventorySubPid} = start_subscriber(inventory),
@@ -39,35 +41,47 @@ stop(_State) ->
 
 -spec start_subscriber(atom()) ->
     ok.
-start_subscriber(_EventType) ->
-    ok.
+start_subscriber(EventType) ->
+    Pid = erlang:spawn(fun() -> init_subscriber_actor(EventType) end),
+    true = erlang:register(EventType, Pid),
+    {ok, Pid}.
 
 
 %% Internal Functions
 
-init_subscriber_actor() ->
-    InitState = #{},
+send(PName, Message) ->
+    PName ! Message,
+    receive
+        Reply ->
+            Reply
+    after 1000 ->
+        io:format("Process Messaging timeout: ~p", [{PName, Message}])
+    end.
+
+init_subscriber_actor(EventType) ->
+    InitState = #{event_type => EventType},
     subscriber_actor(InitState).
 
 subscriber_actor(State) ->
     receive
-        {Pid, {EventType, Message}} ->
+        {_Pid, {purchase_complete, _Message}} ->
+            subscriber_actor(State);
+        {_Pid, stop} ->
             ok
     end.
 
-
-%% Publisher will have its own exchange with events
-
 init_exchange_actor() ->
-    InitState = #{},
-    publisher_actor(InitState).
+    InitState = #{subscribers => []},
+    exchange_actor(InitState).
 
 exchange_actor(State) ->
     receive
-        {_Pid, {purchase_complete = EventType, EventMessage}} ->
+        {_Pid, {purchase_complete = _EventType, _EventMessage} = Event} ->
             %% Notify the subscribers
+            #{subscribers := Subscribers} = State,
+            [send(PName, Event) || {PName, _} <- Subscribers],
             exchange_actor(State);
-        {_Pid, {add_subscriber, SubscriberType}} ->
+        {_Pid, {new_subscriber, _SubscriberType}} ->
             exchange_actor(State);
         {_Pid, exit} ->
             ok;
@@ -75,7 +89,7 @@ exchange_actor(State) ->
             exchange_actor(State)
     end.
 
-publish_event(_Type, Message) ->
-    Message.
+publish_event(Type, Message) ->
+    send(?EXCHANGE, [{Type, Message}]).
 
 
