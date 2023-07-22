@@ -24,15 +24,15 @@ start(_StartType, _StartArgs) ->
     Pid = erlang:spawn(fun() -> init_exchange_actor() end),
     true = erlang:register(?EXCHANGE, Pid),
     %% Spawn Subscribers
-    {ok, EmailSubPid} = start_subscriber(email),
-    {ok, InventorySubPid} = start_subscriber(inventory),
-    {ok, ShippingSubPid} = start_subscriber(shipping),
+    {ok, _EmailSubPid} = start_subscriber(<<"email">>),
+    {ok, _InventorySubPid} = start_subscriber(<<"inventory">>),
+    {ok, _ShippingSubPid} = start_subscriber(<<"shipping">>),
+    %% Verify Exchange knows Subscribers
     {ok, [
-        {publisher, Pid},
-        {email_subscriber, EmailSubPid},
-        {inventory_subscriber, InventorySubPid},
-        {shipping_subscriber, ShippingSubPid}
-    ]}.
+        exchange_subscriber_shipping,
+        exchange_subscriber_inventory,
+        exchange_subscriber_email
+    ]} = send(?EXCHANGE, {self(), get_subscribers}).
 
 stop(_State) ->
     ok.
@@ -47,11 +47,16 @@ start_subscriber(Name) ->
     {ok, Pid}.
 
 publish_event() ->
-    %% Publish Purchase Event to Exchange 
-    ok = publish_event(purchase_complete, [{quantity, 1}, {item, "Shirt"}]).
+    %% Publish Purchase Event to Exchange
+    Event = [{quantity, 1}, {item, "Shirt"}],
+    {ok, [
+        <<"email - handled">>,
+        <<"inventory - handled">>,
+        <<"shipping - handled">>
+    ]} = publish_event(purchase_complete, Event).
 
 publish_event(Type, Message) ->
-    ok = send(?EXCHANGE, {self(), {Type, Message}}).
+    send(?EXCHANGE, {self(), {Type, Message}}).
 
 %% Internal Functions
 
@@ -61,20 +66,21 @@ send(PName, Message) ->
         Reply ->
             Reply
     after 1000 ->
-        io:format("Process Messaging timeout: ~p", [{PName, Message}])
+        io:format("Process Messaging timeout: ~p", [{PName, Message}]),
+        {error, timeout}
     end.
 
 to_subscriber_name(EventType) ->
-    binary_to_atom(<<"exchange_subscriber_", (atom_to_binary(EventType))/binary>>).
+    binary_to_atom(<<"exchange_subscriber_", EventType/binary>>).
 
 init_subscriber_actor(EventType) ->
     InitState = #{event_type => EventType},
     subscriber_actor(InitState).
 
-subscriber_actor(State) ->
+subscriber_actor(#{event_type := EventType} = State) ->
     receive
         {Pid, {purchase_complete, _Message}} ->
-            Pid ! ok,
+            Pid ! {ok, <<EventType/binary, " - handled">>},
             subscriber_actor(State);
         {_Pid, stop} ->
             ok
@@ -88,13 +94,22 @@ exchange_actor(#{subscribers := Subscribers} = State) ->
     receive
         {Pid, {purchase_complete = _EventType, _EventMessage} = Event} ->
             %% Notify the subscribers
-            [send(PName, Event) || {PName, _} <- Subscribers],
-            Pid ! ok,
+            Msgs = lists:foldl(
+                fun(SubProcName, Acc) ->
+                    {ok, Msg} = send(SubProcName, {self(), Event}),
+                    [Msg|Acc]
+                end,
+                [],
+                Subscribers),
+            Pid ! {ok, Msgs},
             exchange_actor(State);
         {Pid, {new_subscriber, {name, PName}}} ->
             NewState = State#{subscribers => [PName|Subscribers]},
             Pid ! ok,
             exchange_actor(NewState);
+        {Pid, get_subscribers} ->
+            Pid ! {ok, Subscribers},
+            exchange_actor(State);
         {_Pid, stop} ->
             ok;
         {'DOWN', _Ref, process, _Pid, _Reason} ->
