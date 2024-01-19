@@ -10,10 +10,7 @@
 -author("Cameron Gallichan").
 
 %% API
--export([myList/1]).
-
-myList([Hd|Tl]) ->
-  plusOne([Hd|Tl]).
+-export([plusOne/1]).
 
 plusOne([]) -> [];
 plusOne([H|T]) -> [H+1 | plusOne(T)].
